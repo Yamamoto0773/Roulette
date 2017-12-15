@@ -84,7 +84,7 @@ BOOL CGame::Init(HINSTANCE hinst) {
 		DEBUG("DirectXText生成失敗\n");
 		return FALSE;
 	}
-	dt.Create(300, 600, L"Century Gothic", false);
+	dt.Create(600, 600, L"Century Gothic", false);
 
 
 	// 画像ファイル読み込み
