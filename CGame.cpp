@@ -21,7 +21,7 @@
 CGame::CGame() {
 	int i;
 	bLostDevice		= FALSE;
-	BOYLOTTERYCNT		= 0;
+	BOYLOTTERYCNT	= 0;
 	eState			= INIT;
 	pLottery		= NULL;
 	iLastBoyLotteryCnt	= 0;
@@ -84,6 +84,7 @@ BOOL CGame::Init(HINSTANCE hinst) {
 		DEBUG("DirectXText生成失敗\n");
 		return FALSE;
 	}
+	dt.Create(300, 600, L"Century Gothic", false);
 
 
 	// 画像ファイル読み込み
@@ -93,17 +94,6 @@ BOOL CGame::Init(HINSTANCE hinst) {
 	dd.SetPutStatus(0, 0.9f, 0.7f, 0.0f);;
 
 	dd.SetBackColor(0xffffff);
-
-
-
-	// 数字のテクスチャを作成
-	for (i=0; i<10; i++) {
-		dt.SetFontStatus(i, 300, L"Century Gothic", 10, 10, 10, 255, FW_HEAVY);
-		dt.SetString(i, "%d", i);
-	}
-	dt.SetFontStatus(10, 300, L"Century Gothic", 10, 10, 10, 255, FW_HEAVY);
-	dt.SetString(10, "-");
-
 
 
 
@@ -319,17 +309,16 @@ BOOL CGame::RunRoulette() {
 	for (i=0; i<3; i++) {
 		if ((iRouletteState >> i)&0b0001) {
 			// ルーレット回転中
-			dt.Put(rand()%10, textX-width*i, textY);
+			dt.Draw(textX-width*i, textY, 300, 0, 0xff000000, "%d", rand()%10);
 		}
 		else {
 			// ルーレット停止中
 			if (iWiningNum == 0) {
 				// くじがなくなったとき
-				dt.Put(10, textX-width*i, textY);
+				dt.Draw(textX-width*i, textY, 300, 0, 0xff000000, "-");
 			}
 			else {
-				dt.Put(num%10, textX-width*i, textY);
-
+				dt.Draw(textX-width*i, textY, 300, 0, 0xff000000, "%d", num%10);
 			}
 		}
 		num/=10;
