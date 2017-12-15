@@ -10,7 +10,7 @@
 #include "./libfiles/CDDPro90.h"
 #include "./libfiles/CDIPro81.h"
 #include "./libfiles/CWindow.h"
-#include "./libfiles/DirectXText.h"
+#include "./libfiles/DXTextANSI.h"
 
 
 #define MAXKEYCNT 7
@@ -39,7 +39,7 @@ class CGame {
 	CWindow			win;				// ウインドウ管理
 	CDDPro90		dd;					// Direct3D管理クラス
 	CDIPro81		di;					// DirectInput全般
-	DirectXText		dt;					// テキスト関連
+	DXTextANSI		dt;					// テキスト関連
 
 	STATE			eState;				// ゲームのステート状況
 
