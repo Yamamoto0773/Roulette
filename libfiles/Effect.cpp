@@ -1,9 +1,5 @@
 ﻿#include "Effect.hpp"
 
-extern "C" {
-#include "MT.h"
-}
-
 
 Effect::Effect(unsigned int _texID, EFFECTPOS &pos, SIZE &size, EFFECTPOS &_mvSpd, float rorateSpd) {
 	info.texID = _texID;
@@ -45,7 +41,7 @@ EffectManager::EffectManager(CDDPro90 *_dd, unsigned int screenW, unsigned int s
 		effect[i] = NULL;
 	}
 
-	init_genrand((unsigned long)time(NULL));
+	srand(unsigned(time(NULL)));
 }
 
 EffectManager::~EffectManager() {
@@ -86,10 +82,10 @@ void EffectManager::Draw() const {
 void EffectManager::AddEffect() {
 	if (effectCnt >= MAXEFFECTCNT) return;
 
-	int t = (int)(20 + 10*genrand_real1());
+	int t = 20 + rand()%10;
 	SIZE size ={ t,t };
-	EFFECTPOS pos ={ (float)(-t+genrand_int31()%(width+2*t)), -2.0f*t };
-	float rotate = (float)(genrand_real3()/10-0.05);
+	EFFECTPOS pos ={ (float)(-t+rand()%(width+2*t)), -2.0f*t };
+	float rotate = (float)(rand()%10/100.0-0.05);
 	EFFECTPOS spd ={ rotate*10, 1.0 };
 
 	effect[effectCnt] = new Effect(rand()%TEXTURECUNT, pos, size, spd, rotate);
