@@ -89,7 +89,7 @@ void EffectManager::AddEffect() {
 	int t = (int)(20 + 10*genrand_real1());
 	SIZE size ={ t,t };
 	EFFECTPOS pos ={ (float)(-t+genrand_int31()%(width+2*t)), -2.0f*t };
-	float rotate = (float)(genrand_real3()/1000-0.05);
+	float rotate = (float)(genrand_real3()/10-0.05);
 	EFFECTPOS spd ={ rotate*10, 1.0 };
 
 	effect[effectCnt] = new Effect(rand()%TEXTURECUNT, pos, size, spd, rotate);
