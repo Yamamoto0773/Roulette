@@ -6,28 +6,28 @@
 #include <stdlib.h>
 
 #define DEBUGMODE
+
 #include "libfiles/DEBUG.H"
-#include "./libfiles/MT.h"
+
+extern "C" {
+#include "libfiles/MT.h"
+}
 
 #define STR(var) #var
-#define SAFE_FREE(x) { if (x) { free(x); x=NULL; } }
-
-
 
 
 /////////////////////////////////////////////////////////////////////////
 // コンストラクタ
 /////////////////////////////////////////////////////////////////////////
 CGame::CGame() {
-	int i;
 	bLostDevice		= FALSE;
-	BOYLOTTERYCNT	= 0;
+	BOYCNT	= 0;
 	eState			= INIT;
 	pLottery		= NULL;
-	iLastBoyLotteryCnt	= 0;
+	iRestBoyCnt	= 0;
 	iRouletteState	= 0b0000;
-	GIRLLOTTERYCNT	= 0;
-	iLastGirlLotteryCnt = 0;
+	GIRLCNT	= 0;
+	iRestGirlCnt = 0;
 	iWiningNum		= 0;
 
 	ZeroMemory(&bOnKey, sizeof(bOnKey));
@@ -46,9 +46,7 @@ CGame::~CGame() {
 // 初期化＆ゲーム形成
 ///////////////////////////////////////////////////////
 BOOL CGame::Init(HINSTANCE hinst) {
-	int i;
-
-	int windowW = 960, windowH = 720;
+	const int windowW = 960, windowH = 720;
 
 	// ウインドウ生成
 	win.SetWindowStyle(WS_OVERLAPPEDWINDOW);					// 枠無しウインドウ(フルスクリーン時はWS_POPUPのみ、ウィンドウモード時はさらにWS_CAPTION|WS_SYSMENUなどを付ける)
@@ -75,9 +73,11 @@ BOOL CGame::Init(HINSTANCE hinst) {
 	// キーボードを使う
 	if (!di.CreateKeyboard()) {
 		DEBUG("キーボード使用不可\n");
-		//		return FALSE;				// キーボードが使用できなくても起動可能とする
+		return FALSE;
 	}
 
+	if (!df.Init(dd.GetD3DDevice()))
+		return FALSE;
 
 	// DirectXText生成
 	if (!dt.Init(dd.GetD3DDevice(), windowW, windowH)) {
@@ -86,12 +86,33 @@ BOOL CGame::Init(HINSTANCE hinst) {
 	}
 	dt.Create(600, 600, L"Century Gothic", false);
 
+	ef = new EffectManager(&dd, (unsigned)windowW, (unsigned)windowH);
+
 
 	// 画像ファイル読み込み
-	dd.AddTexture(0, "background.png");
+	char *filename[] ={
+		"resource/background.jpg",
+		"resource/effect1.png",
+		"resource/effect2.png",
+		"resource/effect3.png",
+		"resource/effect4.png"
+	};
+
+	for (int i=0; i< (1+TEXTURECUNT); i++) {
+		dd.AddTexture(i, filename[i]);
+		CDDTexPro90 *tex = dd.GetTexClass(i);
+		dd.SetPutRange(i, i, 0, 0, tex->GetWidth(), tex->GetHeight());
+	}
+
+	float scale = 1.0f;
 	CDDTexPro90 *tex = dd.GetTexClass(0);
-	dd.SetPutRange(0, 0, 0, 0, tex->GetWidth(), tex->GetHeight());
-	dd.SetPutStatus(0, 0.9f, 0.7f, 0.0f);;
+	if (tex->GetWidth()/tex->GetHeight() < windowW/windowH) {
+		scale = (float)windowW/(float)tex->GetWidth();
+	}
+	else {
+		scale = (float)windowH/(float)tex->GetHeight();
+	}
+	dd.SetPutStatus(0, 1.0f, scale, 0.0f);
 
 	dd.SetBackColor(0xffffff);
 
@@ -143,22 +164,23 @@ BOOL CGame::Init(HINSTANCE hinst) {
 
 
 	// くじの定義
-	BOYLOTTERYCNT = max1 - min1 +1;
-	GIRLLOTTERYCNT = max2 - min2 +1;
-	iLastBoyLotteryCnt = BOYLOTTERYCNT;
-	iLastGirlLotteryCnt = GIRLLOTTERYCNT;
+	BOYCNT = max1 - min1 +1;
+	GIRLCNT = max2 - min2 +1;
+	iRestBoyCnt = BOYCNT;
+	iRestGirlCnt = GIRLCNT;
 
-	pLottery = (int*)malloc(sizeof(int)*(GIRLLOTTERYCNT+BOYLOTTERYCNT));
+	pLottery = (int*)malloc(sizeof(int)*(GIRLCNT+BOYCNT));
 	if (!pLottery) {
 		DEBUG("エラー> pLottery　メモリの確保に失敗しました\n");
 		return FALSE;
 	}
 
-	for (i=0; i<GIRLLOTTERYCNT; i++) {
+	int i;
+	for (i=0; i<GIRLCNT; i++) {
 		pLottery[i] = min2 + i;
 	}
-	for (; i<GIRLLOTTERYCNT+BOYLOTTERYCNT; i++) {
-		pLottery[i] = min1 + i-GIRLLOTTERYCNT;
+	for (; i<GIRLCNT+BOYCNT; i++) {
+		pLottery[i] = min1 + i-GIRLCNT;
 	}
 
 
@@ -176,8 +198,6 @@ BOOL CGame::Init(HINSTANCE hinst) {
 // ロード済みデータの全開放
 ///////////////////////////////////////////////////////
 BOOL CGame::Clear(void) {
-	int i;
-
 	dd.Clear();
 
 	return TRUE;
@@ -188,9 +208,6 @@ BOOL CGame::Clear(void) {
 // ルーレット実行関数
 ///////////////////////////////////////////////////////
 BOOL CGame::RunRoulette() {
-	// テンポラリ変数
-	int i, j, k;
-
 	// キーボード入力
 	BYTE key[256];
 	di.GetKeyboard(key);
@@ -208,7 +225,7 @@ BOOL CGame::RunRoulette() {
 		DIK_SPACE, DIK_RETURN, DIK_BACK, DIK_RSHIFT, DIK_V, DIK_B, DIK_N
 	};
 
-	for (i=0; i<MAXKEYCNT; i++) {
+	for (int i=0; i<MAXKEYCNT; i++) {
 		if ((key[KEYID[i]]&0x80)) {
 			// キーボード入力があった場合
 			if (!bOnKey[i]) {
@@ -266,6 +283,8 @@ BOOL CGame::RunRoulette() {
 	}
 
 
+	ef->Update();
+
 
 	////////////////////////////////////////////////////////////////////////////////////
 	// デバイスロストチェック(フルスクリーン時にALT+TABを押した場合など)
@@ -301,12 +320,19 @@ BOOL CGame::RunRoulette() {
 
 	dd.Put2(0, 960/2, 720/2);
 
+	ef->Draw();
+
+	dd.SetBlendOne(false);
+	df.noStroke();
+	df.fill(255,255,255, 100);
+	df.rect(180, 200, 600, 260);
+
 	// 当選番号の描画
 	int width = 160;
 	int textX = 570;
 	int textY = 180;
 	int num = iWiningNum;
-	for (i=0; i<3; i++) {
+	for (int i=0; i<3; i++) {
 		if ((iRouletteState >> i)&0b0001) {
 			// ルーレット回転中
 			dt.Draw(textX-width*i, textY, 300, 0, 0xff000000, "%d", rand()%10);
@@ -324,6 +350,8 @@ BOOL CGame::RunRoulette() {
 		num/=10;
 	}
 
+	
+
 	dd.DrawEnd();
 
 	// 継続
@@ -335,61 +363,61 @@ BOOL CGame::SetNumber(SETNUMBER mode) {
 	// 当選番号取得
 	int i;
 	if (mode == GIRL) {
-		if (iLastGirlLotteryCnt < 1) {
+		if (iRestGirlCnt < 1) {
 			// くじがないときは終了
 			return FALSE;
 		}
 
-		i = genrand_int32()%iLastGirlLotteryCnt;
-		i += (GIRLLOTTERYCNT-iLastGirlLotteryCnt);
+		i = genrand_int32()%iRestGirlCnt;
+		i += (GIRLCNT-iRestGirlCnt);
 	}
 	else if (mode == BOY) {
-		if (iLastBoyLotteryCnt < 1) {
+		if (iRestBoyCnt < 1) {
 			// くじがない場合は終了
 			return FALSE;
 		}
 
-		i = genrand_int32()%iLastBoyLotteryCnt;
-		i += GIRLLOTTERYCNT;
+		i = genrand_int32()%iRestBoyCnt;
+		i += GIRLCNT;
 	}
 	else {
-		if (iLastBoyLotteryCnt+iLastGirlLotteryCnt < 1) {
+		if (iRestBoyCnt+iRestGirlCnt < 1) {
 			// くじがないときは終了
 			return FALSE;
 		}
 
-		i = genrand_int32()%(iLastBoyLotteryCnt+iLastGirlLotteryCnt);
-		i += (GIRLLOTTERYCNT-iLastGirlLotteryCnt);
+		i = genrand_int32()%(iRestBoyCnt+iRestGirlCnt);
+		i += (GIRLCNT-iRestGirlCnt);
 	}
 	iWiningNum = pLottery[i];
 
 
 
 	// くじの並びの最適化
-	if (i < GIRLLOTTERYCNT) {
+	if (i < GIRLCNT) {
 		// 女子のくじの並び替え
-		pLottery[i] = pLottery[GIRLLOTTERYCNT-iLastGirlLotteryCnt];
-		pLottery[GIRLLOTTERYCNT-iLastGirlLotteryCnt] = 0;
+		pLottery[i] = pLottery[GIRLCNT-iRestGirlCnt];
+		pLottery[GIRLCNT-iRestGirlCnt] = 0;
 
-		iLastGirlLotteryCnt--;
+		iRestGirlCnt--;
 	}
 	else {
 		// 男子のくじの並び替え
-		pLottery[i] = pLottery[GIRLLOTTERYCNT+iLastBoyLotteryCnt-1];
-		pLottery[GIRLLOTTERYCNT+iLastBoyLotteryCnt-1] = 0;
+		pLottery[i] = pLottery[GIRLCNT+iRestBoyCnt-1];
+		pLottery[GIRLCNT+iRestBoyCnt-1] = 0;
 
-		iLastBoyLotteryCnt--;
+		iRestBoyCnt--;
 	}
 
 
 	if (mode == GIRL) {
-		DEBUG("No.%3d: %4d <GIRL>\n", GIRLLOTTERYCNT+BOYLOTTERYCNT-iLastBoyLotteryCnt-iLastGirlLotteryCnt, iWiningNum);
+		DEBUG("No.%3d: %4d <GIRL>\n", GIRLCNT+BOYCNT-iRestBoyCnt-iRestGirlCnt, iWiningNum);
 	}
 	else if (mode == BOY) {
-		DEBUG("No.%3d: %4d <BOY>\n",  GIRLLOTTERYCNT+BOYLOTTERYCNT-iLastBoyLotteryCnt-iLastGirlLotteryCnt, iWiningNum);
+		DEBUG("No.%3d: %4d <BOY>\n",  GIRLCNT+BOYCNT-iRestBoyCnt-iRestGirlCnt, iWiningNum);
 	}
 	else {
-		DEBUG("No.%3d: %4d\n",  GIRLLOTTERYCNT+BOYLOTTERYCNT-iLastBoyLotteryCnt-iLastGirlLotteryCnt, iWiningNum);
+		DEBUG("No.%3d: %4d\n",  GIRLCNT+BOYCNT-iRestBoyCnt-iRestGirlCnt, iWiningNum);
 
 	}
 
