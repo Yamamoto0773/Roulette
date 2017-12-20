@@ -11,19 +11,16 @@
 #include "./libfiles/CDIPro81.h"
 #include "./libfiles/CWindow.h"
 #include "./libfiles/DXTextANSI.h"
-
+#include "./libfiles/Effect.hpp"
+#include "./libfiles/DirectXFigure.h"
 
 #define MAXKEYCNT 7
 
 
-typedef struct _Point {
-	float x, y;
-}Point;
-
 // ステート
 enum STATE {
 	INIT=0,			// ゲーム初期化
-	RUN,	// ルーレット開始
+	RUN,			// ルーレット開始
 	END				// 全てのゲーム終了処理
 };
 
@@ -40,16 +37,19 @@ class CGame {
 	CDDPro90		dd;					// Direct3D管理クラス
 	CDIPro81		di;					// DirectInput全般
 	DXTextANSI		dt;					// テキスト関連
+	DirectXFigure	df;
+
+	EffectManager	*ef;
 
 	STATE			eState;				// ゲームのステート状況
 
 	BOOL			bLostDevice;		// D3Dデバイスロスト状態フラグ
 
 	int				*pLottery;			// くじを保存するポインタ
-	int				BOYLOTTERYCNT;		// 当選する番号の最大数
-	int				iLastBoyLotteryCnt;	// くじの残り数(合計
-	int				GIRLLOTTERYCNT;		// 女子のくじの最大数
-	int				iLastGirlLotteryCnt;// 女子のくじの残り数
+	int				BOYCNT;				// 男子くじの数
+	int				iRestBoyCnt;		// 男子くじの残り数
+	int				GIRLCNT;			// 女子のくじの数
+	int				iRestGirlCnt;		// 女子のくじの残り数
 
 	int				iWiningNum;			// 現在の当選番号
 
