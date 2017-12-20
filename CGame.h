@@ -37,6 +37,7 @@ class CGame {
 	CDDPro90		dd;					// Direct3D管理クラス
 	CDIPro81		di;					// DirectInput全般
 	DXTextANSI		dt;					// テキスト関連
+	DXTextANSI		dtsmall;
 	DirectXFigure	df;
 
 	EffectManager	*ef;
