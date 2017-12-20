@@ -111,7 +111,7 @@ BOOL CWindow::Create( HINSTANCE hInst,const WCHAR *appName,BOOL show,DWORD w,DWO
     wc.hIcon			= LoadIcon(hInstance, cIconID );
     wc.hCursor			= LoadCursor(NULL, IDC_ARROW);
     wc.hbrBackground	= (HBRUSH)GetStockObject(WHITE_BRUSH);
-	wc.lpszMenuName		= MAKEINTRESOURCE( hMenu );
+	wc.lpszMenuName		= MAKEINTRESOURCE( (WORD)hMenu );
     wc.lpszClassName	= mName;
     if ( !RegisterClass(&wc) )
         return FALSE;

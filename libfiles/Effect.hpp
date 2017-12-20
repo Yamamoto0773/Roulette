@@ -57,7 +57,7 @@ public:
 	// 描画
 	void Draw() const;
 
-	int effectCnt;
+	unsigned int effectCnt;
 
 private:
 	void AddEffect();

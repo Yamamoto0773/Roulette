@@ -45,7 +45,7 @@ EffectManager::EffectManager(CDDPro90 *_dd, unsigned int screenW, unsigned int s
 		effect[i] = NULL;
 	}
 
-	init_genrand(time(NULL));
+	init_genrand((unsigned long)time(NULL));
 }
 
 EffectManager::~EffectManager() {
@@ -86,10 +86,10 @@ void EffectManager::Draw() const {
 void EffectManager::AddEffect() {
 	if (effectCnt >= MAXEFFECTCNT) return;
 
-	int t = 20 + 10*genrand_real1();
+	int t = (int)(20 + 10*genrand_real1());
 	SIZE size ={ t,t };
-	EFFECTPOS pos ={ -t+genrand_int31()%(width+2*t), -2*t };
-	float rotate = (rand()%100/1000.0-0.05);
+	EFFECTPOS pos ={ (float)(-t+genrand_int31()%(width+2*t)), -2.0f*t };
+	float rotate = (float)(genrand_real3()/1000-0.05);
 	EFFECTPOS spd ={ rotate*10, 1.0 };
 
 	effect[effectCnt] = new Effect(rand()%TEXTURECUNT, pos, size, spd, rotate);
@@ -108,7 +108,7 @@ bool EffectManager::IsFrameout(unsigned int element) {
 
 void EffectManager::DeleteEffect(unsigned int element) {
 	if (effectCnt <= 0) return;
-	if (element < 0 || element >= effectCnt) return;
+	if (element < 0u || element >= effectCnt) return;
 
 	delete effect[element];
 	effectCnt--;
