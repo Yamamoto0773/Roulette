@@ -80,11 +80,13 @@ BOOL CGame::Init(HINSTANCE hinst) {
 		return FALSE;
 
 	// DirectXText生成
-	if (!dt.Init(dd.GetD3DDevice(), windowW, windowH)) {
+	if (!dt.Init(dd.GetD3DDevice(), windowW, windowH) ||
+		!dtsmall.Init(dd.GetD3DDevice(), windowW, windowH)) {
 		DEBUG("DirectXText生成失敗\n");
 		return FALSE;
 	}
 	dt.Create(600, 600, L"Century Gothic", false);
+	dtsmall.Create(20, 0, L"Century Gothic", false);
 
 	ef = new EffectManager(&dd, (unsigned)windowW, (unsigned)windowH);
 
@@ -318,14 +320,16 @@ BOOL CGame::RunRoulette() {
 	////////////////////////////////////////////////////////////////////////////////////
 	dd.DrawBegin();
 
-	dd.Put2(0, 960/2, 720/2);
+	dd.Put2(0, 960/2, 720/2);	// 背景
 
-	ef->Draw();
+	dtsmall.Draw(750, 700, 20, 0, 0x7fffffff, "(c)2017, Nanami Yamamoto");	// 署名
+
+	ef->Draw();	// エフェクト
 
 	dd.SetBlendOne(false);
 	df.noStroke();
 	df.fill(255,255,255, 100);
-	df.rect(180, 200, 600, 260);
+	df.rect(180, 200, 600, 260);	// ボックス
 
 	// 当選番号の描画
 	int width = 160;
