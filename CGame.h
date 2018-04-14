@@ -13,8 +13,7 @@
 #include "./libfiles/DXTextANSI.h"
 #include "./libfiles/Effect.hpp"
 #include "./libfiles/DirectXFigure.h"
-
-#define MAXKEYCNT 7
+#include "./Lottery.hpp"
 
 
 // ステート
@@ -32,6 +31,10 @@ enum SETNUMBER {
 };
 
 class CGame {
+public :
+	static const int KEYCNT = 16;
+
+private:
 	// ライブラリなど
 	CWindow			win;				// ウインドウ管理
 	CDDPro90		dd;					// Direct3D管理クラス
@@ -42,22 +45,26 @@ class CGame {
 
 	EffectManager	*ef;
 
+	Lottery			lottery;
+
 	STATE			eState;				// ゲームのステート状況
 
 	BOOL			bLostDevice;		// D3Dデバイスロスト状態フラグ
 
-	int				*pLottery;			// くじを保存するポインタ
-	int				BOYCNT;				// 男子くじの数
-	int				iRestBoyCnt;		// 男子くじの残り数
-	int				GIRLCNT;			// 女子のくじの数
-	int				iRestGirlCnt;		// 女子のくじの残り数
-
-	int				iWiningNum;			// 現在の当選番号
+	size_t			iWiningNum;			// 現在の当選番号
 
 	int				iRouletteState;		// ルーレットの各桁の状態
 
 	// 入力状態
-	BOOL			bOnKey[MAXKEYCNT];	// キーが押されているか
+	BOOL			bOnKey[KEYCNT];	// キーが押されているか
+
+				
+	const int KEYID[KEYCNT] ={		// キーのリスト
+		DIK_SPACE, DIK_C, DIK_V, DIK_B, DIK_N, DIK_RETURN, DIK_1, DIK_2, DIK_3,DIK_4,DIK_5,
+		DIK_6, DIK_7, DIK_8, DIK_9, DIK_0
+	};
+
+
 
 private:
 	// 初期化
@@ -65,7 +72,7 @@ private:
 	BOOL Clear( void );					// ロード済みデータの開放
 
 	BOOL RunRoulette();
-	BOOL SetNumber(SETNUMBER mode);		// 女子のくじを引く場合はoptionをtrueにする
+	BOOL SetNumber(std::vector<size_t> &group);		// 女子のくじを引く場合はoptionをtrueにする
 
 public:
 	// 公開関数

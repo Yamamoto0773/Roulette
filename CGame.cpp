@@ -4,30 +4,21 @@
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sstream>
+#include <iomanip>
 
 #define DEBUGMODE
 
 #include "libfiles/DEBUG.H"
-
-extern "C" {
-#include "libfiles/MT.h"
-}
-
-#define STR(var) #var
-
 
 /////////////////////////////////////////////////////////////////////////
 // コンストラクタ
 /////////////////////////////////////////////////////////////////////////
 CGame::CGame() {
 	bLostDevice		= FALSE;
-	BOYCNT	= 0;
 	eState			= INIT;
-	pLottery		= NULL;
-	iRestBoyCnt	= 0;
 	iRouletteState	= 0b0000;
-	GIRLCNT	= 0;
-	iRestGirlCnt = 0;
 	iWiningNum		= 0;
 
 	ZeroMemory(&bOnKey, sizeof(bOnKey));
@@ -120,74 +111,48 @@ BOOL CGame::Init(HINSTANCE hinst) {
 
 
 
-	// ファイル読み込み
+	// くじ定義ファイル読み込み
+	if (!lottery.registerLottery(L"DEFINE/Lottery.txt")) {
+		DEBUG("くじの登録に失敗しました\n");
+		return FALSE;
+	}
+
 	FILE *fp;
-	int max2, min2;
-	int max1, min1;
-	fp = fopen("DEFINE/BoyLottery.txt", "r");
-	if (!fp) {
-		DEBUG("ファイルエラー> \"DEFINE/BoyLottery.txt\"を開けません\n");
-		return FALSE;
-	}
-	if (fscanf_s(fp, "%d,%d", &min1, &max1) != 2
-		|| min1 <= 0 || max1 <= 0
-		|| min1 >= 1000 || max1 >= 1000
-		|| min1 > max1) {
-		DEBUG("エラー> 男子くじの定義に失敗しました\n");
-		fclose(fp);
-		return FALSE;
-	}
-	fclose(fp);
-	
-
-	fp = fopen("DEFINE/GirlLottery.txt", "r");
-	if (!fp) {
-		DEBUG("ファイルエラー> \"DEFINE/GirlLottery\"を開けません\n");
-		return FALSE;
-	}
-	if (fscanf_s(fp, "%d,%d", &min2, &max2) != 2
-		|| min2 <= 0 || max2 <= 0
-		|| min2 >= 1000 || max2 >= 1000
-		|| min2 > max2) {
-		DEBUG("エラー> 女子くじの定義に失敗しました\n");
-		fclose(fp);
-		return FALSE;
-	}
-	fclose(fp);
-
-	if (min1<=min2 && max1>=min2 ||
-		max2>=min1 && max2<=min1) {
-		DEBUG("エラー> 女子のくじと男子のくじの番号が重複しています\n");
+	fp = fopen("DEFINE/magnification.txt", "r");
+	if (fp == NULL) {
+		DEBUG("\"DEFINE/magnification.txt\"を開けませんでした");
 		return FALSE;
 	}
 
-	DEBUG("女子くじ :%3d - %3d\n", min2, max2);
-	DEBUG("男子くじ :%3d - %3d\n", min1, max1);
-
-
-	// くじの定義
-	BOYCNT = max1 - min1 +1;
-	GIRLCNT = max2 - min2 +1;
-	iRestBoyCnt = BOYCNT;
-	iRestGirlCnt = GIRLCNT;
-
-	pLottery = (int*)malloc(sizeof(int)*(GIRLCNT+BOYCNT));
-	if (!pLottery) {
-		DEBUG("エラー> pLottery　メモリの確保に失敗しました\n");
-		return FALSE;
-	}
-
+	char tmp[128];
 	int i;
-	for (i=0; i<GIRLCNT; i++) {
-		pLottery[i] = min2 + i;
-	}
-	for (; i<GIRLCNT+BOYCNT; i++) {
-		pLottery[i] = min1 + i-GIRLCNT;
-	}
+	int grade, mag;
+	while (fgets(tmp, 128, fp) != NULL) {
+		i=0, grade=0, mag=0;
 
+		while (tmp[i] >= '0' && tmp[i] <= '9') {
+			grade *= 10;
+			grade += tmp[i]-'0';
+			i++;
+		}
 
-	// 乱数の種の設定
-	init_genrand((unsigned)time(NULL));
+		if (grade < 1 || grade > 10) {
+			DEBUG("範囲外のグループの確率を指定しました");
+			return FALSE;
+		}
+
+		while (tmp[i] == ' ' || tmp[i] == ',' || tmp[i] == '\t') i++;	// 区切り文字は飛ばす
+
+		while (tmp[i] >= '0' && tmp[i] <= '9') {
+			mag *= 10;
+			mag += tmp[i]-'0';
+			i++;
+		}
+
+		// 倍率の登録をおこなう
+		lottery.setMagnification(grade, mag);
+
+	}
 
 	ShowWindow(win.hWnd, SW_SHOW);
 
@@ -219,15 +184,10 @@ BOOL CGame::RunRoulette() {
 		return -1;
 
 	// 仮想入力ハードウェア
-	BOOL press[MAXKEYCNT];						// 押した瞬間にtrueになる配列
+	BOOL press[KEYCNT];						// 押した瞬間にtrueになる配列
 	ZeroMemory(&press, sizeof(press));
 
-	// キーボードの処理
-	static const int KEYID[MAXKEYCNT] ={		// キーのリスト
-		DIK_SPACE, DIK_RETURN, DIK_BACK, DIK_RSHIFT, DIK_V, DIK_B, DIK_N
-	};
-
-	for (int i=0; i<MAXKEYCNT; i++) {
+	for (int i=0; i<KEYCNT; i++) {
 		if ((key[KEYID[i]]&0x80)) {
 			// キーボード入力があった場合
 			if (!bOnKey[i]) {
@@ -251,38 +211,40 @@ BOOL CGame::RunRoulette() {
 		// スペースキーでルーレット停止
 		iRouletteState &= 0b0000;
 	}
+
+	// ルーレットスタート
+	if (press[5]) {
+		if (iRouletteState == 0b0000) {
+			std::vector<size_t> v;
+
+			for (size_t i=1; i<=10; i++) {
+				if (bOnKey[5+i]) {
+					v.push_back(i);
+				}
+			}
+
+			if (SetNumber(v)) {
+				iRouletteState |= 0b0111;
+			}
+
+		}
+	}
+
+
+	// ルーレット停止
 	if (press[1]) {
-		if (iRouletteState == 0b0000) {
-			// ルーレットスタート
-			if (SetNumber(NONE))
-				iRouletteState |= 0b0111;
-		}
+		iRouletteState &= 0b0111;
 	}
-	else if (press[2]) {
-		if (iRouletteState == 0b0000) {
-			// ルーレットスタート　(女子くじのみ
-			if (SetNumber(GIRL))
-				iRouletteState |= 0b0111;
-		}
-	}
-	else if (press[3]) {
-		if (iRouletteState == 0b0000) {
-			// ルーレットスタート　(男子くじのみ
-			if (SetNumber(BOY))
-				iRouletteState |= 0b0111;
-		}
-	}
-
-
-	if (press[4]) {
+	if (press[2]) {
 		iRouletteState &= 0b1011;
 	}
-	if (press[5]) {
+	if (press[3]) {
 		iRouletteState &= 0b1101;
 	}
-	if (press[6]) {
+	if (press[4]) {
 		iRouletteState &= 0b1110;
 	}
+
 
 
 	ef->Update();
@@ -332,23 +294,25 @@ BOOL CGame::RunRoulette() {
 	df.rect(180, 200, 600, 260);	// ボックス
 
 	// 当選番号の描画
-	int width = 160;
-	int textX = 570;
-	int textY = 180;
+	int width = 180;
+	int textX = 580;
+	int textY = 150;
 	int num = iWiningNum;
+	DWORD color = 0xFF000000;
+
 	for (int i=0; i<3; i++) {
 		if ((iRouletteState >> i)&0b0001) {
 			// ルーレット回転中
-			dt.Draw(textX-width*i, textY, 300, 0, 0xff000000, "%d", rand()%10);
+			dt.Draw(textX-width*i, textY, 360, 0, color, "%d", rand()%10);
 		}
 		else {
 			// ルーレット停止中
 			if (iWiningNum == 0) {
 				// くじがなくなったとき
-				dt.Draw(textX-width*i, textY, 300, 0, 0xff000000, "-");
+				dt.Draw(textX-width*i, textY, 360, 0, color, "-");
 			}
 			else {
-				dt.Draw(textX-width*i, textY, 300, 0, 0xff000000, "%d", num%10);
+				dt.Draw(textX-width*i, textY, 360, 0, color, "%d", num%10);
 			}
 		}
 		num/=10;
@@ -363,69 +327,38 @@ BOOL CGame::RunRoulette() {
 }
 
 
-BOOL CGame::SetNumber(SETNUMBER mode) {
+BOOL CGame::SetNumber(std::vector<size_t> &group) {
 	// 当選番号取得
-	int i;
-	if (mode == GIRL) {
-		if (iRestGirlCnt < 1) {
-			// くじがないときは終了
-			return FALSE;
-		}
+	bool res;
 
-		i = genrand_int32()%iRestGirlCnt;
-		i += (GIRLCNT-iRestGirlCnt);
-	}
-	else if (mode == BOY) {
-		if (iRestBoyCnt < 1) {
-			// くじがない場合は終了
-			return FALSE;
-		}
-
-		i = genrand_int32()%iRestBoyCnt;
-		i += GIRLCNT;
+	if (group.size() == 0) {
+		res = lottery.getNumber(iWiningNum);
 	}
 	else {
-		if (iRestBoyCnt+iRestGirlCnt < 1) {
-			// くじがないときは終了
-			return FALSE;
+		res = lottery.getNumber(iWiningNum, group);
+	}
+
+	if (!res) {
+		return false;
+	}
+
+
+	if (group.size() > 0) {
+		std::stringstream str;
+		str << "No." << iWiningNum << "  group > ";
+
+		for (size_t g : group) {
+			str << g << ", ";
 		}
+		str << "\n";
 
-		i = genrand_int32()%(iRestBoyCnt+iRestGirlCnt);
-		i += (GIRLCNT-iRestGirlCnt);
-	}
-	iWiningNum = pLottery[i];
-
-
-
-	// くじの並びの最適化
-	if (i < GIRLCNT) {
-		// 女子のくじの並び替え
-		pLottery[i] = pLottery[GIRLCNT-iRestGirlCnt];
-		pLottery[GIRLCNT-iRestGirlCnt] = 0;
-
-		iRestGirlCnt--;
+		DEBUG("%s", str.str().c_str());
 	}
 	else {
-		// 男子のくじの並び替え
-		pLottery[i] = pLottery[GIRLCNT+iRestBoyCnt-1];
-		pLottery[GIRLCNT+iRestBoyCnt-1] = 0;
-
-		iRestBoyCnt--;
+		DEBUG("No.%d  \n", iWiningNum);
 	}
 
-
-	if (mode == GIRL) {
-		DEBUG("No.%3d: %4d <GIRL>\n", GIRLCNT+BOYCNT-iRestBoyCnt-iRestGirlCnt, iWiningNum);
-	}
-	else if (mode == BOY) {
-		DEBUG("No.%3d: %4d <BOY>\n",  GIRLCNT+BOYCNT-iRestBoyCnt-iRestGirlCnt, iWiningNum);
-	}
-	else {
-		DEBUG("No.%3d: %4d\n",  GIRLCNT+BOYCNT-iRestBoyCnt-iRestGirlCnt, iWiningNum);
-
-	}
-
-	return TRUE;
+	return true;
 }
 
 
