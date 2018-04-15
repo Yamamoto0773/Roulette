@@ -68,7 +68,7 @@ void EffectManager::Draw() const {
 		const EFFECTINFO *info = effect[i]->GetInfo();
 		dd->SetPutStatusEx(
 			info->texID+1,
-			0.9f,
+			0.7f,
 			(float)info->size.cx/dd->GetTexClass(info->texID+1)->GetWidth(),
 			(float)info->size.cy/dd->GetTexClass(info->texID+1)->GetHeight(),
 			info->rotate
