@@ -11,6 +11,7 @@
 #define DEBUGMODE
 
 #include "libfiles/DEBUG.H"
+#include "./libfiles/CTimer.h"
 
 /////////////////////////////////////////////////////////////////////////
 // コンストラクタ
@@ -284,7 +285,7 @@ BOOL CGame::RunRoulette() {
 
 	dd.Put2(0, 960/2, 720/2);	// 背景
 
-	dtsmall.Draw(750, 700, 20, 0, 0x7fffffff, "(c)2017, Nanami Yamamoto");	// 署名
+	dtsmall.Draw(750, 700, 20, 0, 0x7fffffff, "(c)2018, Nanami Yamamoto");	// 署名
 
 	ef->Draw();	// エフェクト
 
@@ -298,7 +299,7 @@ BOOL CGame::RunRoulette() {
 	int textX = 580;
 	int textY = 150;
 	int num = iWiningNum;
-	DWORD color = 0xFF000000;
+	DWORD color = 0xB0EC1140;
 
 	for (int i=0; i<3; i++) {
 		if ((iRouletteState >> i)&0b0001) {
@@ -371,54 +372,67 @@ BOOL CGame::Run(HINSTANCE hinst) {
 	// ゲームメインループ
 	MSG msg;
 	BOOL bLoop=TRUE;
-	while (bLoop) {
-		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
-			if (msg.message==WM_QUIT) {
-				bLoop = FALSE;
-				DEBUG("WM_QUIT\n");
-				break;
-			}
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-		}
 
-		// メインゲーム処理分け
-		switch (eState) {
-		case INIT:
-			// 初期化
-			if (!Init(hinst)) {
-				// 失敗
-				eState = END;
+	CTimer timer;
+	timer.Start(60);	// 60fpsで実行
+
+	while (bLoop) {
+
+		int frame = timer.Run();
+		for (int i=0; i<frame; i++) {
+
+			if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+				if (msg.message==WM_QUIT) {
+					bLoop = FALSE;
+					DEBUG("WM_QUIT\n");
+					break;
+				}
+				TranslateMessage(&msg);
+				DispatchMessage(&msg);
 			}
 			else {
-				// 成功
-				eState = RUN;
+
+				// メインゲーム処理分け
+				switch (eState) {
+					case INIT:
+						// 初期化
+						if (!Init(hinst)) {
+							// 失敗
+							eState = END;
+						}
+						else {
+							// 成功
+							eState = RUN;
+						}
+						break;
+
+					case RUN:
+						switch (RunRoulette()) {
+							case 0:
+								eState = RUN;
+								break;
+							case -1:
+								eState = END;
+								break;
+						}
+						break;
+
+					case END:
+						// 終了処理
+						Clear();
+						bLoop = FALSE;
+						break;
+
+					default:
+						// 未定義のステート
+						DEBUG("異常終了\n");
+						return FALSE;
+				}
+
 			}
-			break;
 
-		case RUN:
-			switch (RunRoulette()) {
-			case 0:
-				eState = RUN;
-				break;
-			case -1:
-				eState = END;
-				break;
-			}
-			break;
-
-		case END:
-			// 終了処理
-			Clear();
-			bLoop = FALSE;
-			break;
-
-		default:
-			// 未定義のステート
-			DEBUG("異常終了\n");
-			return FALSE;
 		}
-		Sleep(10);
+
 	}
 
 	win.Delete();
