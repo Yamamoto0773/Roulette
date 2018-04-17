@@ -4,30 +4,19 @@
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sstream>
+#include <iomanip>
 
-#define DEBUGMODE
 
-#include "libfiles/DEBUG.H"
-
-extern "C" {
-#include "libfiles/MT.h"
-}
-
-#define STR(var) #var
-
+#include "./libfiles/CTimer.h"
 
 /////////////////////////////////////////////////////////////////////////
 // コンストラクタ
 /////////////////////////////////////////////////////////////////////////
 CGame::CGame() {
-	bLostDevice		= FALSE;
-	BOYCNT	= 0;
 	eState			= INIT;
-	pLottery		= NULL;
-	iRestBoyCnt	= 0;
 	iRouletteState	= 0b0000;
-	GIRLCNT	= 0;
-	iRestGirlCnt = 0;
 	iWiningNum		= 0;
 
 	ZeroMemory(&bOnKey, sizeof(bOnKey));
@@ -38,7 +27,7 @@ CGame::CGame() {
 // デストラクタ
 /////////////////////////////////////////////////////////////////////////
 CGame::~CGame() {
-	Clear();
+
 }
 
 
@@ -48,146 +37,158 @@ CGame::~CGame() {
 BOOL CGame::Init(HINSTANCE hinst) {
 	const int windowW = 960, windowH = 720;
 
+	log.init("DEBUG.txt");
+
+
 	// ウインドウ生成
 	win.SetWindowStyle(WS_OVERLAPPEDWINDOW);					// 枠無しウインドウ(フルスクリーン時はWS_POPUPのみ、ウィンドウモード時はさらにWS_CAPTION|WS_SYSMENUなどを付ける)
 	if (!win.Create(hinst, L"Roulette", 1, windowW, windowH)) {	// ウィンドウサイズは720p
-		DEBUG("Window create error\n");
+		log.tlnwrite("Window create error\n");
 		return FALSE;
 	}
 	ImmAssociateContext(win.hWnd, NULL);			// IMEを出さないようにする
 
+	dx9::DXDrawManager::SetLogWriteDest(&log);
+
 	// Direct3D生成
-	// フルスクリーンの1920*1080の32bitカラーにセットする。
-	// ※2つ目の引数をFALSEにするとウインドウモードに出来る
-	if (!dd.Create(win.hWnd, FALSE, windowW, windowH, 32, 0, TRUE)) {
-		DEBUG("Direct3D create error\n");
-		return FALSE;
+	if (!dim.CreateWind(win.hWnd, windowW, windowH)) {
+		log.tlnwrite("Failed to Create Direct3D9 Resources");
 	}
+
 
 	// DirectInput生成
 	if (!di.Create(win.hWnd, win.hInstance)) {
-		DEBUG("DirectInput生成失敗\n");
+		log.tlnwrite("DirectInput生成失敗\n");
 		return FALSE;
 	}
 
 	// キーボードを使う
 	if (!di.CreateKeyboard()) {
-		DEBUG("キーボード使用不可\n");
+		log.tlnwrite("キーボード使用不可\n");
 		return FALSE;
 	}
 
-	if (!df.Init(dd.GetD3DDevice()))
+	if (!df.Create()) {
 		return FALSE;
+	}
+
 
 	// DirectXText生成
-	if (!dt.Init(dd.GetD3DDevice(), windowW, windowH) ||
-		!dtsmall.Init(dd.GetD3DDevice(), windowW, windowH)) {
-		DEBUG("DirectXText生成失敗\n");
+	if (!dt.Create("Century Gothic", 360, dx9::FontWeight::SEMIBOLD) ||
+		!dtsmall.Create("Century Gothic", 20, dx9::FontWeight::NORMAL)) {
+		log.tlnwrite("DirectXText生成失敗\n");
 		return FALSE;
 	}
-	dt.Create(600, 600, L"Century Gothic", false);
-	dtsmall.Create(20, 0, L"Century Gothic", false);
 
-	ef = new EffectManager(&dd, (unsigned)windowW, (unsigned)windowH);
+	ef = new EffectManager(&dim, (unsigned)windowW, (unsigned)windowH);
 
 
 	// 画像ファイル読み込み
-	char *filename[] ={
-		"resource/background.jpg",
-		"resource/effect1.png",
-		"resource/effect2.png",
-		"resource/effect3.png",
-		"resource/effect4.png"
+	wchar_t *filename[] = {
+		L"resource/background.jpg",
+		L"resource/effect1.png",
+		L"resource/effect2.png",
+		L"resource/effect3.png",
+		L"resource/effect4.png"
 	};
 
 	for (int i=0; i< (1+TEXTURECUNT); i++) {
-		dd.AddTexture(i, filename[i]);
-		CDDTexPro90 *tex = dd.GetTexClass(i);
-		dd.SetPutRange(i, i, 0, 0, tex->GetWidth(), tex->GetHeight());
+		if (!dim.AddTexture((unsigned)i, filename[i]))
+			return false;
 	}
 
-	float scale = 1.0f;
-	CDDTexPro90 *tex = dd.GetTexClass(0);
-	if (tex->GetWidth()/tex->GetHeight() < windowW/windowH) {
-		scale = (float)windowW/(float)tex->GetWidth();
+
+
+	// 背景画像の縮尺設定
+	dx9::Size bgSize = dim.GetTexSize(0);
+	if (bgSize.w/bgSize.h < windowW/windowH) {
+		bgScale = (float)windowW/(float)bgSize.w;
 	}
 	else {
-		scale = (float)windowH/(float)tex->GetHeight();
+		bgScale = (float)windowH/(float)bgSize.h;
 	}
-	dd.SetPutStatus(0, 1.0f, scale, 0.0f);
-
-	dd.SetBackColor(0xffffff);
 
 
 
-	// ファイル読み込み
+	dim.SetBackGroundColor(0xffffff);
+
+
+
+	// くじ定義ファイル読み込み
+	if (!lottery.registerLottery(L"DEFINE/Lottery.txt")) {
+		log.tlnwrite("くじの登録に失敗しました\n");
+		return FALSE;
+	}
+
 	FILE *fp;
-	int max2, min2;
-	int max1, min1;
-	fp = fopen("DEFINE/BoyLottery.txt", "r");
-	if (!fp) {
-		DEBUG("ファイルエラー> \"DEFINE/BoyLottery.txt\"を開けません\n");
-		return FALSE;
-	}
-	if (fscanf_s(fp, "%d,%d", &min1, &max1) != 2
-		|| min1 <= 0 || max1 <= 0
-		|| min1 >= 1000 || max1 >= 1000
-		|| min1 > max1) {
-		DEBUG("エラー> 男子くじの定義に失敗しました\n");
-		fclose(fp);
-		return FALSE;
-	}
-	fclose(fp);
-	
-
-	fp = fopen("DEFINE/GirlLottery.txt", "r");
-	if (!fp) {
-		DEBUG("ファイルエラー> \"DEFINE/GirlLottery\"を開けません\n");
-		return FALSE;
-	}
-	if (fscanf_s(fp, "%d,%d", &min2, &max2) != 2
-		|| min2 <= 0 || max2 <= 0
-		|| min2 >= 1000 || max2 >= 1000
-		|| min2 > max2) {
-		DEBUG("エラー> 女子くじの定義に失敗しました\n");
-		fclose(fp);
-		return FALSE;
-	}
-	fclose(fp);
-
-	if (min1<=min2 && max1>=min2 ||
-		max2>=min1 && max2<=min1) {
-		DEBUG("エラー> 女子のくじと男子のくじの番号が重複しています\n");
+	fp = fopen("DEFINE/magnification.txt", "r");
+	if (fp == NULL) {
+		log.tlnwrite("\"DEFINE/magnification.txt\"を開けませんでした");
 		return FALSE;
 	}
 
-	DEBUG("女子くじ :%3d - %3d\n", min2, max2);
-	DEBUG("男子くじ :%3d - %3d\n", min1, max1);
-
-
-	// くじの定義
-	BOYCNT = max1 - min1 +1;
-	GIRLCNT = max2 - min2 +1;
-	iRestBoyCnt = BOYCNT;
-	iRestGirlCnt = GIRLCNT;
-
-	pLottery = (int*)malloc(sizeof(int)*(GIRLCNT+BOYCNT));
-	if (!pLottery) {
-		DEBUG("エラー> pLottery　メモリの確保に失敗しました\n");
-		return FALSE;
-	}
-
+	char tmp[128];
 	int i;
-	for (i=0; i<GIRLCNT; i++) {
-		pLottery[i] = min2 + i;
-	}
-	for (; i<GIRLCNT+BOYCNT; i++) {
-		pLottery[i] = min1 + i-GIRLCNT;
+	int grade, mag;
+	while (fgets(tmp, 128, fp) != NULL) {
+		i=0, grade=0, mag=0;
+
+		while (tmp[i] >= '0' && tmp[i] <= '9') {
+			grade *= 10;
+			grade += tmp[i]-'0';
+			i++;
+		}
+
+		if (grade < 1 || grade > 10) {
+			log.tlnwrite("範囲外のグループの確率を指定しました");
+			return FALSE;
+		}
+
+		while (tmp[i] == ' ' || tmp[i] == ',' || tmp[i] == '\t') i++;	// 区切り文字は飛ばす
+
+		while (tmp[i] >= '0' && tmp[i] <= '9') {
+			mag *= 10;
+			mag += tmp[i]-'0';
+			i++;
+		}
+
+		// 倍率の登録をおこなう
+		lottery.setMagnification(grade, mag);
+
 	}
 
 
-	// 乱数の種の設定
-	init_genrand((unsigned)time(NULL));
+	// くじの定義を出力
+	log.lnwrite("\n -- Lottery define --");
+	log.lnwrite("group  number");
+
+	auto lot = lottery.getLottery();
+
+	for (size_t group=0; group<lot.size(); group++) {
+		for (auto num : lot[group]) {
+			log.lnwrite("%5d  %6d", group+1, num);
+		}
+	}
+
+	log.lnwrite("\n -- Magnification define --");
+	log.lnwrite("group  mag");
+
+	auto lotMag = lottery.getMagnification();
+
+	i=1;
+	for (auto m : lotMag) {
+		if (m == 0)
+			log.lnwrite("%5d  <undef>", i);
+		else
+			log.lnwrite("%5d  %3d", i, m);
+
+		i++;
+	}
+
+	log.lnwrite("");
+
+
+
 
 	ShowWindow(win.hWnd, SW_SHOW);
 
@@ -195,15 +196,6 @@ BOOL CGame::Init(HINSTANCE hinst) {
 	return TRUE;
 }
 
-
-///////////////////////////////////////////////////////
-// ロード済みデータの全開放
-///////////////////////////////////////////////////////
-BOOL CGame::Clear(void) {
-	dd.Clear();
-
-	return TRUE;
-}
 
 
 ///////////////////////////////////////////////////////
@@ -219,15 +211,10 @@ BOOL CGame::RunRoulette() {
 		return -1;
 
 	// 仮想入力ハードウェア
-	BOOL press[MAXKEYCNT];						// 押した瞬間にtrueになる配列
+	BOOL press[KEYCNT];						// 押した瞬間にtrueになる配列
 	ZeroMemory(&press, sizeof(press));
 
-	// キーボードの処理
-	static const int KEYID[MAXKEYCNT] ={		// キーのリスト
-		DIK_SPACE, DIK_RETURN, DIK_BACK, DIK_RSHIFT, DIK_V, DIK_B, DIK_N
-	};
-
-	for (int i=0; i<MAXKEYCNT; i++) {
+	for (int i=0; i<KEYCNT; i++) {
 		if ((key[KEYID[i]]&0x80)) {
 			// キーボード入力があった場合
 			if (!bOnKey[i]) {
@@ -251,181 +238,127 @@ BOOL CGame::RunRoulette() {
 		// スペースキーでルーレット停止
 		iRouletteState &= 0b0000;
 	}
+
+	// ルーレットスタート
+	if (press[5]) {
+		if (iRouletteState == 0b0000) {
+			std::vector<size_t> v;
+
+			for (size_t i=1; i<=10; i++) {
+				if (bOnKey[5+i]) {
+					v.push_back(i);
+				}
+			}
+
+			if (SetNumber(v)) {
+				iRouletteState |= 0b0111;
+			}
+
+		}
+	}
+
+
+	// ルーレット停止
 	if (press[1]) {
-		if (iRouletteState == 0b0000) {
-			// ルーレットスタート
-			if (SetNumber(NONE))
-				iRouletteState |= 0b0111;
-		}
+		iRouletteState &= 0b0111;
 	}
-	else if (press[2]) {
-		if (iRouletteState == 0b0000) {
-			// ルーレットスタート　(女子くじのみ
-			if (SetNumber(GIRL))
-				iRouletteState |= 0b0111;
-		}
-	}
-	else if (press[3]) {
-		if (iRouletteState == 0b0000) {
-			// ルーレットスタート　(男子くじのみ
-			if (SetNumber(BOY))
-				iRouletteState |= 0b0111;
-		}
-	}
-
-
-	if (press[4]) {
+	if (press[2]) {
 		iRouletteState &= 0b1011;
 	}
-	if (press[5]) {
+	if (press[3]) {
 		iRouletteState &= 0b1101;
 	}
-	if (press[6]) {
+	if (press[4]) {
 		iRouletteState &= 0b1110;
 	}
+
 
 
 	ef->Update();
 
 
 	////////////////////////////////////////////////////////////////////////////////////
-	// デバイスロストチェック(フルスクリーン時にALT+TABを押した場合など)
-	// ※復帰時は内部で管理しているテクスチャは自動的にリストアされるが、
-	//   MANAGEDではない頂点バッファやテクスチャを使用している場合は、
-	//   自分でロスト＆リストア処理を行う
-	////////////////////////////////////////////////////////////////////////////////////
-	if (!dd.CheckDevice()) {
-		// ロスト中なら
-		if (!bLostDevice) {
-			// ロスト直後ならここで開放処理を行う
-			DEBUG("デバイスがロストした\n");
-
-			bLostDevice = TRUE;
-		}
-
-		// 描画せずに抜ける
-		return 0;
-	}
-
-	if (bLostDevice) {
-		// リストア直後ならここで再構築を行う
-		DEBUG("リストアされた\n");
-
-		bLostDevice = FALSE;
-	}
-
-
-	////////////////////////////////////////////////////////////////////////////////////
 	// 描画処理
 	////////////////////////////////////////////////////////////////////////////////////
-	dd.DrawBegin();
+	dim.ClearBackGround();
+	dim.DrawBegin();
 
-	dd.Put2(0, 960/2, 720/2);	// 背景
 
-	dtsmall.Draw(750, 700, 20, 0, 0x7fffffff, "(c)2017, Nanami Yamamoto");	// 署名
+	dim.Draw(0, 960/2, 720/2, dx9::DrawTexCoord::CENTER, 1.0f, bgScale, bgScale);	// 背景
+
+	dtsmall.Draw(750, 700, 0x7fffffff, "(c)2018, Nanami Yamamoto");	// 署名
 
 	ef->Draw();	// エフェクト
 
-	dd.SetBlendOne(false);
-	df.noStroke();
-	df.fill(255,255,255, 100);
-	df.rect(180, 200, 600, 260);	// ボックス
+	dim.SetBlendMode(dx9::BLENDMODE::NORMAL);
+
+	df.DrawRect(180, 200, 600, 260, 0x64ffffff);	// ボックス
 
 	// 当選番号の描画
-	int width = 160;
-	int textX = 570;
-	int textY = 180;
+	int width = 180;
+	int textX = 580;
+	int textY = 150;
 	int num = iWiningNum;
+	DWORD color = 0xB0EC1140;
+
 	for (int i=0; i<3; i++) {
 		if ((iRouletteState >> i)&0b0001) {
 			// ルーレット回転中
-			dt.Draw(textX-width*i, textY, 300, 0, 0xff000000, "%d", rand()%10);
+			dt.Draw(textX-width*i, textY, color, "%d", rand()%10);
 		}
 		else {
 			// ルーレット停止中
 			if (iWiningNum == 0) {
 				// くじがなくなったとき
-				dt.Draw(textX-width*i, textY, 300, 0, 0xff000000, "-");
+				dt.Draw(textX-width*i, textY, color, "-");
 			}
 			else {
-				dt.Draw(textX-width*i, textY, 300, 0, 0xff000000, "%d", num%10);
+				dt.Draw(textX-width*i, textY, color, "%d", num%10);
 			}
 		}
 		num/=10;
 	}
 
-	
 
-	dd.DrawEnd();
+
+	dim.DrawEnd();
 
 	// 継続
 	return 0;
 }
 
 
-BOOL CGame::SetNumber(SETNUMBER mode) {
+BOOL CGame::SetNumber(std::vector<size_t> &group) {
 	// 当選番号取得
-	int i;
-	if (mode == GIRL) {
-		if (iRestGirlCnt < 1) {
-			// くじがないときは終了
-			return FALSE;
-		}
+	bool res;
 
-		i = genrand_int32()%iRestGirlCnt;
-		i += (GIRLCNT-iRestGirlCnt);
-	}
-	else if (mode == BOY) {
-		if (iRestBoyCnt < 1) {
-			// くじがない場合は終了
-			return FALSE;
-		}
-
-		i = genrand_int32()%iRestBoyCnt;
-		i += GIRLCNT;
+	if (group.size() == 0) {
+		res = lottery.getNumber(iWiningNum);
 	}
 	else {
-		if (iRestBoyCnt+iRestGirlCnt < 1) {
-			// くじがないときは終了
-			return FALSE;
+		res = lottery.getNumber(iWiningNum, group);
+	}
+
+	if (!res) {
+		return false;
+	}
+
+
+	if (group.size() > 0) {
+		std::stringstream str;
+		str << "No." << iWiningNum << "  group > ";
+
+		for (size_t g : group) {
+			str << g << ", ";
 		}
-
-		i = genrand_int32()%(iRestBoyCnt+iRestGirlCnt);
-		i += (GIRLCNT-iRestGirlCnt);
-	}
-	iWiningNum = pLottery[i];
-
-
-
-	// くじの並びの最適化
-	if (i < GIRLCNT) {
-		// 女子のくじの並び替え
-		pLottery[i] = pLottery[GIRLCNT-iRestGirlCnt];
-		pLottery[GIRLCNT-iRestGirlCnt] = 0;
-
-		iRestGirlCnt--;
+		
+		log.tlnwrite("%s", str.str().c_str());
 	}
 	else {
-		// 男子のくじの並び替え
-		pLottery[i] = pLottery[GIRLCNT+iRestBoyCnt-1];
-		pLottery[GIRLCNT+iRestBoyCnt-1] = 0;
-
-		iRestBoyCnt--;
+		log.tlnwrite("No.%d", iWiningNum);
 	}
 
-
-	if (mode == GIRL) {
-		DEBUG("No.%3d: %4d <GIRL>\n", GIRLCNT+BOYCNT-iRestBoyCnt-iRestGirlCnt, iWiningNum);
-	}
-	else if (mode == BOY) {
-		DEBUG("No.%3d: %4d <BOY>\n",  GIRLCNT+BOYCNT-iRestBoyCnt-iRestGirlCnt, iWiningNum);
-	}
-	else {
-		DEBUG("No.%3d: %4d\n",  GIRLCNT+BOYCNT-iRestBoyCnt-iRestGirlCnt, iWiningNum);
-
-	}
-
-	return TRUE;
+	return true;
 }
 
 
@@ -438,54 +371,65 @@ BOOL CGame::Run(HINSTANCE hinst) {
 	// ゲームメインループ
 	MSG msg;
 	BOOL bLoop=TRUE;
+
+	CTimer timer;
+	timer.Start(60);	// 60fpsで実行
+
 	while (bLoop) {
-		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
-			if (msg.message==WM_QUIT) {
-				bLoop = FALSE;
-				DEBUG("WM_QUIT\n");
-				break;
+
+		int frame = timer.Run();
+		for (int i=0; i<frame; i++) {
+
+			if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
+				if (msg.message==WM_QUIT) {
+					bLoop = FALSE;
+					log.tlnwrite("WM_QUIT\n");
+					break;
+				}
+				TranslateMessage(&msg);
+				DispatchMessage(&msg);
 			}
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
+
+			// メインゲーム処理分け
+			switch (eState) {
+				case INIT:
+					// 初期化
+					if (!Init(hinst)) {
+						// 失敗
+						eState = END;
+					}
+					else {
+						// 成功
+						eState = RUN;
+					}
+					break;
+
+				case RUN:
+					switch (RunRoulette()) {
+						case 0:
+							eState = RUN;
+							break;
+						case -1:
+							eState = END;
+							break;
+					}
+					break;
+
+				case END:
+					// 終了処理
+					bLoop = FALSE;
+					break;
+
+				default:
+					// 未定義のステート
+					log.tlnwrite("異常終了\n");
+					return FALSE;
+			}
+
+
+
 		}
 
-		// メインゲーム処理分け
-		switch (eState) {
-		case INIT:
-			// 初期化
-			if (!Init(hinst)) {
-				// 失敗
-				eState = END;
-			}
-			else {
-				// 成功
-				eState = RUN;
-			}
-			break;
-
-		case RUN:
-			switch (RunRoulette()) {
-			case 0:
-				eState = RUN;
-				break;
-			case -1:
-				eState = END;
-				break;
-			}
-			break;
-
-		case END:
-			// 終了処理
-			Clear();
-			bLoop = FALSE;
-			break;
-
-		default:
-			// 未定義のステート
-			DEBUG("異常終了\n");
-			return FALSE;
-		}
-		Sleep(10);
 	}
 
 	win.Delete();

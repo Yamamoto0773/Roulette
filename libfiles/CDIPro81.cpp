@@ -5,7 +5,7 @@
 #define SAFE_FREE(x)		{ if(x) { free(x); x=NULL; } }
 
 #define DEBUGMODE
-#include "DEBUG.H"
+
 
 /////////////////////////////////////////////////////////////////////////
 // コンストラクタ
@@ -49,7 +49,7 @@ BOOL CALLBACK CDIPro81::EnumJoyDeviceProc( LPDIDEVICEINSTANCE lpddi, LPVOID pvRe
 	HRESULT ret = p->lpDI->CreateDevice(lpddi->guidInstance,&p->mJoy[p->iJoy-1].lpJoyDev,NULL );
 	if( FAILED(ret) ) {
 		// 失敗なら次のデバイスへ
-		DEBUG( "デバイス構築失敗\n" );
+		//DEBUG( "デバイス構築失敗\n" );
 		return DIENUM_CONTINUE;
 	}
 
@@ -57,7 +57,7 @@ BOOL CALLBACK CDIPro81::EnumJoyDeviceProc( LPDIDEVICEINSTANCE lpddi, LPVOID pvRe
 	ret = p->mJoy[p->iJoy-1].lpJoyDev->SetDataFormat( &c_dfDIJoystick2 );
 	if( FAILED(ret) ) {
 		// 失敗なら次のデバイスへ
-		DEBUG( "フォーマット設定失敗\n" );
+		//DEBUG( "フォーマット設定失敗\n" );
 		return DIENUM_CONTINUE;
 	}
 
@@ -143,19 +143,19 @@ BOOL CDIPro81::CreateKeyboard( void )
 
 	HRESULT ret = lpDI->CreateDevice( GUID_SysKeyboard,&lpKeyboard,NULL );
 	if( FAILED(ret) ) {
-		DEBUG( "キーボードデバイスの生成に失敗\n" );
+		//DEBUG( "キーボードデバイスの生成に失敗\n" );
 		return FALSE;
 	}
 	ret = lpKeyboard->SetDataFormat( &c_dfDIKeyboard );
 	if( FAILED(ret) ) {
-		DEBUG( "データフォーマットの設定に失敗\n" );
+		//DEBUG( "データフォーマットの設定に失敗\n" );
 		return FALSE;
 	}
 
 	// 協調モードの設定
 	ret = lpKeyboard->SetCooperativeLevel( hWnd,DISCL_FOREGROUND|DISCL_NONEXCLUSIVE|DISCL_NOWINKEY );
 	if( FAILED(ret) ) {
-		DEBUG( "協調モードの設定に失敗\n" );
+		//DEBUG( "協調モードの設定に失敗\n" );
 		return FALSE;
 	}
 
@@ -227,12 +227,12 @@ BOOL CDIPro81::CreateMouse( void )
 
 	HRESULT ret = lpDI->CreateDevice( GUID_SysMouse,&lpMouse,NULL );
 	if( FAILED(ret) ) {
-		DEBUG( "マウスデバイスの生成に失敗\n" );
+		//DEBUG( "マウスデバイスの生成に失敗\n" );
 		return FALSE;
 	}
 	ret = lpMouse->SetDataFormat( &c_dfDIMouse );
 	if( FAILED(ret) ) {
-		DEBUG( "データフォーマットの設定に失敗\n" );
+		//DEBUG( "データフォーマットの設定に失敗\n" );
 		return FALSE;
 	}
 
@@ -331,7 +331,7 @@ BOOL CDIPro81::GetJoystick( LPDIJOYSTATE2 js,int id )
 const WCHAR *CDIPro81::GetJoyInstName( int id )
 {
 	if( id<0 || id>iJoy-1 ) {
-		DEBUG( "JoystickのIDが無効 [%d]\n",id );
+		//DEBUG( "JoystickのIDが無効 [%d]\n",id );
 		return NULL;
 	}
 	return mJoy[id].mInstName;
@@ -343,7 +343,7 @@ const WCHAR *CDIPro81::GetJoyInstName( int id )
 const WCHAR *CDIPro81::GetJoyProdName( int id )
 {
 	if( id<0 || id>iJoy-1 ) {
-		DEBUG( "JoystickのIDが無効 [%d]\n",id );
+		//DEBUG( "JoystickのIDが無効 [%d]\n",id );
 		return NULL;
 	}
 	return mJoy[id].mProdName;
