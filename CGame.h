@@ -7,14 +7,16 @@
 #include <Windows.h>
 #define _USE_MATH_DEFINES
 #include <math.h>
-#include "./libfiles/CDDPro90.h"
-#include "./libfiles/CDIPro81.h"
-#include "./libfiles/CWindow.h"
-#include "./libfiles/DXTextANSI.h"
-#include "./libfiles/Effect.hpp"
-#include "./libfiles/DirectXFigure.h"
-#include "./Lottery.hpp"
 
+#include "libfiles/CDIPro81.h"
+#include "libfiles/CTimer.h"
+#include "libfiles/CWindow.h"
+#include "libfiles/DirectXFigure.hpp"
+#include "libfiles/DirectXFontAscii.hpp"
+#include "libfiles/DirectXImage.hpp"
+#include "libfiles/Effect.hpp"
+#include "libfiles/LogManager.hpp"
+#include "Lottery.hpp"
 
 // ステート
 enum STATE {
@@ -36,12 +38,14 @@ public :
 
 private:
 	// ライブラリなど
-	CWindow			win;				// ウインドウ管理
-	CDDPro90		dd;					// Direct3D管理クラス
-	CDIPro81		di;					// DirectInput全般
-	DXTextANSI		dt;					// テキスト関連
-	DXTextANSI		dtsmall;
-	DirectXFigure	df;
+	CWindow					win;		// ウインドウ管理
+	dx9::DirectXImage		dim;
+	CDIPro81				di;			// DirectInput全般
+	dx9::DirectXFontAscii	dt;			// テキスト関連
+	dx9::DirectXFontAscii	dtsmall;
+	dx9::DirectXFigure		df;
+	
+	LogFile					log;
 
 	EffectManager	*ef;
 
@@ -49,11 +53,13 @@ private:
 
 	STATE			eState;				// ゲームのステート状況
 
-	BOOL			bLostDevice;		// D3Dデバイスロスト状態フラグ
-
 	size_t			iWiningNum;			// 現在の当選番号
 
 	int				iRouletteState;		// ルーレットの各桁の状態
+
+
+	float			bgScale;
+
 
 	// 入力状態
 	BOOL			bOnKey[KEYCNT];	// キーが押されているか
@@ -69,7 +75,6 @@ private:
 private:
 	// 初期化
 	BOOL Init( HINSTANCE hinst );		// 初期化＆ゲーム形成
-	BOOL Clear( void );					// ロード済みデータの開放
 
 	BOOL RunRoulette();
 	BOOL SetNumber(std::vector<size_t> &group);		// 女子のくじを引く場合はoptionをtrueにする

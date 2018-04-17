@@ -8,16 +8,13 @@
 #include <sstream>
 #include <iomanip>
 
-#define DEBUGMODE
 
-#include "libfiles/DEBUG.H"
 #include "./libfiles/CTimer.h"
 
 /////////////////////////////////////////////////////////////////////////
 // コンストラクタ
 /////////////////////////////////////////////////////////////////////////
 CGame::CGame() {
-	bLostDevice		= FALSE;
 	eState			= INIT;
 	iRouletteState	= 0b0000;
 	iWiningNum		= 0;
@@ -30,7 +27,7 @@ CGame::CGame() {
 // デストラクタ
 /////////////////////////////////////////////////////////////////////////
 CGame::~CGame() {
-	Clear();
+
 }
 
 
@@ -40,88 +37,93 @@ CGame::~CGame() {
 BOOL CGame::Init(HINSTANCE hinst) {
 	const int windowW = 960, windowH = 720;
 
+	log.init("DEBUG.txt");
+
+
 	// ウインドウ生成
 	win.SetWindowStyle(WS_OVERLAPPEDWINDOW);					// 枠無しウインドウ(フルスクリーン時はWS_POPUPのみ、ウィンドウモード時はさらにWS_CAPTION|WS_SYSMENUなどを付ける)
 	if (!win.Create(hinst, L"Roulette", 1, windowW, windowH)) {	// ウィンドウサイズは720p
-		DEBUG("Window create error\n");
+		log.tlnwrite("Window create error\n");
 		return FALSE;
 	}
 	ImmAssociateContext(win.hWnd, NULL);			// IMEを出さないようにする
 
+	dx9::DXDrawManager::SetLogWriteDest(&log);
+
 	// Direct3D生成
-	// フルスクリーンの1920*1080の32bitカラーにセットする。
-	// ※2つ目の引数をFALSEにするとウインドウモードに出来る
-	if (!dd.Create(win.hWnd, FALSE, windowW, windowH, 32, 0, TRUE)) {
-		DEBUG("Direct3D create error\n");
-		return FALSE;
+	if (!dim.CreateWind(win.hWnd, windowW, windowH)) {
+		log.tlnwrite("Failed to Create Direct3D9 Resources");
 	}
+
 
 	// DirectInput生成
 	if (!di.Create(win.hWnd, win.hInstance)) {
-		DEBUG("DirectInput生成失敗\n");
+		log.tlnwrite("DirectInput生成失敗\n");
 		return FALSE;
 	}
 
 	// キーボードを使う
 	if (!di.CreateKeyboard()) {
-		DEBUG("キーボード使用不可\n");
+		log.tlnwrite("キーボード使用不可\n");
 		return FALSE;
 	}
 
-	if (!df.Init(dd.GetD3DDevice()))
+	if (!df.Create()) {
 		return FALSE;
+	}
+
 
 	// DirectXText生成
-	if (!dt.Init(dd.GetD3DDevice(), windowW, windowH) ||
-		!dtsmall.Init(dd.GetD3DDevice(), windowW, windowH)) {
-		DEBUG("DirectXText生成失敗\n");
+	if (!dt.Create("Century Gothic", 360, dx9::FontWeight::SEMIBOLD) ||
+		!dtsmall.Create("Century Gothic", 20, dx9::FontWeight::NORMAL)) {
+		log.tlnwrite("DirectXText生成失敗\n");
 		return FALSE;
 	}
-	dt.Create(600, 600, L"Century Gothic", false);
-	dtsmall.Create(20, 0, L"Century Gothic", false);
 
-	ef = new EffectManager(&dd, (unsigned)windowW, (unsigned)windowH);
+	ef = new EffectManager(&dim, (unsigned)windowW, (unsigned)windowH);
 
 
 	// 画像ファイル読み込み
-	char *filename[] ={
-		"resource/background.jpg",
-		"resource/effect1.png",
-		"resource/effect2.png",
-		"resource/effect3.png",
-		"resource/effect4.png"
+	wchar_t *filename[] = {
+		L"resource/background.jpg",
+		L"resource/effect1.png",
+		L"resource/effect2.png",
+		L"resource/effect3.png",
+		L"resource/effect4.png"
 	};
 
 	for (int i=0; i< (1+TEXTURECUNT); i++) {
-		dd.AddTexture(i, filename[i]);
-		CDDTexPro90 *tex = dd.GetTexClass(i);
-		dd.SetPutRange(i, i, 0, 0, tex->GetWidth(), tex->GetHeight());
+		if (!dim.AddTexture((unsigned)i, filename[i]))
+			return false;
 	}
 
-	float scale = 1.0f;
-	CDDTexPro90 *tex = dd.GetTexClass(0);
-	if (tex->GetWidth()/tex->GetHeight() < windowW/windowH) {
-		scale = (float)windowW/(float)tex->GetWidth();
+
+
+	// 背景画像の縮尺設定
+	dx9::Size bgSize = dim.GetTexSize(0);
+	if (bgSize.w/bgSize.h < windowW/windowH) {
+		bgScale = (float)windowW/(float)bgSize.w;
 	}
 	else {
-		scale = (float)windowH/(float)tex->GetHeight();
+		bgScale = (float)windowH/(float)bgSize.h;
 	}
-	dd.SetPutStatus(0, 1.0f, scale, 0.0f);
 
-	dd.SetBackColor(0xffffff);
+
+
+	dim.SetBackGroundColor(0xffffff);
 
 
 
 	// くじ定義ファイル読み込み
 	if (!lottery.registerLottery(L"DEFINE/Lottery.txt")) {
-		DEBUG("くじの登録に失敗しました\n");
+		log.tlnwrite("くじの登録に失敗しました\n");
 		return FALSE;
 	}
 
 	FILE *fp;
 	fp = fopen("DEFINE/magnification.txt", "r");
 	if (fp == NULL) {
-		DEBUG("\"DEFINE/magnification.txt\"を開けませんでした");
+		log.tlnwrite("\"DEFINE/magnification.txt\"を開けませんでした");
 		return FALSE;
 	}
 
@@ -138,7 +140,7 @@ BOOL CGame::Init(HINSTANCE hinst) {
 		}
 
 		if (grade < 1 || grade > 10) {
-			DEBUG("範囲外のグループの確率を指定しました");
+			log.tlnwrite("範囲外のグループの確率を指定しました");
 			return FALSE;
 		}
 
@@ -155,21 +157,45 @@ BOOL CGame::Init(HINSTANCE hinst) {
 
 	}
 
+
+	// くじの定義を出力
+	log.lnwrite("\n -- Lottery define --");
+	log.lnwrite("group  number");
+
+	auto lot = lottery.getLottery();
+
+	for (size_t group=0; group<lot.size(); group++) {
+		for (auto num : lot[group]) {
+			log.lnwrite("%5d  %6d", group+1, num);
+		}
+	}
+
+	log.lnwrite("\n -- Magnification define --");
+	log.lnwrite("group  mag");
+
+	auto lotMag = lottery.getMagnification();
+
+	i=1;
+	for (auto m : lotMag) {
+		if (m == 0)
+			log.lnwrite("%5d  <undef>", i);
+		else
+			log.lnwrite("%5d  %3d", i, m);
+
+		i++;
+	}
+
+	log.lnwrite("");
+
+
+
+
 	ShowWindow(win.hWnd, SW_SHOW);
 
 
 	return TRUE;
 }
 
-
-///////////////////////////////////////////////////////
-// ロード済みデータの全開放
-///////////////////////////////////////////////////////
-BOOL CGame::Clear(void) {
-	dd.Clear();
-
-	return TRUE;
-}
 
 
 ///////////////////////////////////////////////////////
@@ -252,47 +278,21 @@ BOOL CGame::RunRoulette() {
 
 
 	////////////////////////////////////////////////////////////////////////////////////
-	// デバイスロストチェック(フルスクリーン時にALT+TABを押した場合など)
-	// ※復帰時は内部で管理しているテクスチャは自動的にリストアされるが、
-	//   MANAGEDではない頂点バッファやテクスチャを使用している場合は、
-	//   自分でロスト＆リストア処理を行う
-	////////////////////////////////////////////////////////////////////////////////////
-	if (!dd.CheckDevice()) {
-		// ロスト中なら
-		if (!bLostDevice) {
-			// ロスト直後ならここで開放処理を行う
-			DEBUG("デバイスがロストした\n");
-
-			bLostDevice = TRUE;
-		}
-
-		// 描画せずに抜ける
-		return 0;
-	}
-
-	if (bLostDevice) {
-		// リストア直後ならここで再構築を行う
-		DEBUG("リストアされた\n");
-
-		bLostDevice = FALSE;
-	}
-
-
-	////////////////////////////////////////////////////////////////////////////////////
 	// 描画処理
 	////////////////////////////////////////////////////////////////////////////////////
-	dd.DrawBegin();
+	dim.ClearBackGround();
+	dim.DrawBegin();
 
-	dd.Put2(0, 960/2, 720/2);	// 背景
 
-	dtsmall.Draw(750, 700, 20, 0, 0x7fffffff, "(c)2018, Nanami Yamamoto");	// 署名
+	dim.Draw(0, 960/2, 720/2, dx9::DrawTexCoord::CENTER, 1.0f, bgScale, bgScale);	// 背景
+
+	dtsmall.Draw(750, 700, 0x7fffffff, "(c)2018, Nanami Yamamoto");	// 署名
 
 	ef->Draw();	// エフェクト
 
-	dd.SetBlendOne(false);
-	df.noStroke();
-	df.fill(255,255,255, 100);
-	df.rect(180, 200, 600, 260);	// ボックス
+	dim.SetBlendMode(dx9::BLENDMODE::NORMAL);
+
+	df.DrawRect(180, 200, 600, 260, 0x64ffffff);	// ボックス
 
 	// 当選番号の描画
 	int width = 180;
@@ -304,24 +304,24 @@ BOOL CGame::RunRoulette() {
 	for (int i=0; i<3; i++) {
 		if ((iRouletteState >> i)&0b0001) {
 			// ルーレット回転中
-			dt.Draw(textX-width*i, textY, 360, 0, color, "%d", rand()%10);
+			dt.Draw(textX-width*i, textY, color, "%d", rand()%10);
 		}
 		else {
 			// ルーレット停止中
 			if (iWiningNum == 0) {
 				// くじがなくなったとき
-				dt.Draw(textX-width*i, textY, 360, 0, color, "-");
+				dt.Draw(textX-width*i, textY, color, "-");
 			}
 			else {
-				dt.Draw(textX-width*i, textY, 360, 0, color, "%d", num%10);
+				dt.Draw(textX-width*i, textY, color, "%d", num%10);
 			}
 		}
 		num/=10;
 	}
 
-	
 
-	dd.DrawEnd();
+
+	dim.DrawEnd();
 
 	// 継続
 	return 0;
@@ -351,12 +351,11 @@ BOOL CGame::SetNumber(std::vector<size_t> &group) {
 		for (size_t g : group) {
 			str << g << ", ";
 		}
-		str << "\n";
-
-		DEBUG("%s", str.str().c_str());
+		
+		log.tlnwrite("%s", str.str().c_str());
 	}
 	else {
-		DEBUG("No.%d  \n", iWiningNum);
+		log.tlnwrite("No.%d", iWiningNum);
 	}
 
 	return true;
@@ -384,52 +383,50 @@ BOOL CGame::Run(HINSTANCE hinst) {
 			if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
 				if (msg.message==WM_QUIT) {
 					bLoop = FALSE;
-					DEBUG("WM_QUIT\n");
+					log.tlnwrite("WM_QUIT\n");
 					break;
 				}
 				TranslateMessage(&msg);
 				DispatchMessage(&msg);
 			}
-			else {
 
-				// メインゲーム処理分け
-				switch (eState) {
-					case INIT:
-						// 初期化
-						if (!Init(hinst)) {
-							// 失敗
-							eState = END;
-						}
-						else {
-							// 成功
+			// メインゲーム処理分け
+			switch (eState) {
+				case INIT:
+					// 初期化
+					if (!Init(hinst)) {
+						// 失敗
+						eState = END;
+					}
+					else {
+						// 成功
+						eState = RUN;
+					}
+					break;
+
+				case RUN:
+					switch (RunRoulette()) {
+						case 0:
 							eState = RUN;
-						}
-						break;
+							break;
+						case -1:
+							eState = END;
+							break;
+					}
+					break;
 
-					case RUN:
-						switch (RunRoulette()) {
-							case 0:
-								eState = RUN;
-								break;
-							case -1:
-								eState = END;
-								break;
-						}
-						break;
+				case END:
+					// 終了処理
+					bLoop = FALSE;
+					break;
 
-					case END:
-						// 終了処理
-						Clear();
-						bLoop = FALSE;
-						break;
-
-					default:
-						// 未定義のステート
-						DEBUG("異常終了\n");
-						return FALSE;
-				}
-
+				default:
+					// 未定義のステート
+					log.tlnwrite("異常終了\n");
+					return FALSE;
 			}
+
+
 
 		}
 

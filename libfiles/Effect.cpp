@@ -1,5 +1,8 @@
 ﻿#include "Effect.hpp"
 
+#define _USE_MATH_DEFINES
+#include <math.h>  
+
 
 Effect::Effect(unsigned int _texID, EFFECTPOS &pos, SIZE &size, EFFECTPOS &_mvSpd, float rorateSpd) {
 	info.texID = _texID;
@@ -30,8 +33,8 @@ const EFFECTINFO* Effect::GetInfo() const {
 
 
 
-EffectManager::EffectManager(CDDPro90 *_dd, unsigned int screenW, unsigned int screenH) {
-	dd = _dd;
+EffectManager::EffectManager(dx9::DirectXImage *dim, unsigned int screenW, unsigned int screenH) {
+	this->dim = dim;
 	width = screenW;
 	height = screenH;
 
@@ -62,33 +65,34 @@ void EffectManager::Update() {
 }
 
 void EffectManager::Draw() const {
-	dd->SetBlendOne(true);
+	dim->SetBlendMode(dx9::BLENDMODE::NORMAL);
 
 	for (int i=0; i<effectCnt; i++) {
 		const EFFECTINFO *info = effect[i]->GetInfo();
-		dd->SetPutStatusEx(
-			info->texID+1,
+	
+		dim->Draw(info->texID + 1, 
+			info->pos.x, 
+			info->pos.y, 
+			dx9::DrawTexCoord::CENTER,
 			0.7f,
-			(float)info->size.cx/dd->GetTexClass(info->texID+1)->GetWidth(),
-			(float)info->size.cy/dd->GetTexClass(info->texID+1)->GetHeight(),
+			(float)info->size.cx/dim->GetTexSize(info->texID+1).w,
+			(float)info->size.cy/dim->GetTexSize(info->texID+1).h,
 			info->rotate
 			);
 
-
-		dd->Put2(1 + info->texID, info->pos.x, info->pos.y);
 	}
 }
 
 void EffectManager::AddEffect() {
 	if (effectCnt >= MAXEFFECTCNT) return;
 
-	int t = 20 + rand()%10;
+	int t = 30 + rand()%10;
 	SIZE size ={ t,t };
 	EFFECTPOS pos ={ (float)(-t+rand()%(width+2*t)), -2.0f*t };
 	float rotate = (float)(rand()%10/100.0-0.05);
 	EFFECTPOS spd ={ rotate*10, 1.0 };
 
-	effect[effectCnt] = new Effect(rand()%TEXTURECUNT, pos, size, spd, rotate);
+	effect[effectCnt] = new Effect(rand()%TEXTURECUNT, pos, size, spd, rotate*180/M_PI);
 	effectCnt++;
 }
 

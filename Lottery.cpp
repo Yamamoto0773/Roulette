@@ -3,7 +3,7 @@
 Lottery::Lottery() {
 	// 初期値セット
 	magnif.resize(MAXGROUPCNT);
-	name.resize(MAXGROUPCNT);
+	number.resize(MAXGROUPCNT);
 
 	clear();
 
@@ -81,12 +81,12 @@ bool Lottery::registerLottery(const wchar_t * fileName) {
 		// 以下，正しいフォーマットの場合の処理
 
 		if (param2.size() == 0) {
-			name[group-1].push_back(stoi(param1));
+			number[group-1].push_back(stoi(param1));
 		}
 		else {
 			// 範囲指定の場合
 			for (size_t i=stoi(param1); i <= stoi(param2); i++) {
-				name[group-1].push_back(i);
+				number[group-1].push_back(i);
 			}
 
 		}
@@ -154,7 +154,7 @@ bool Lottery::getNumber(size_t &win, std::vector<size_t> &groupList) {
 		if (g < 1 || g > maxGroupID) {
 			return false;
 		}
-		sum += name[g-1].size();
+		sum += number[g-1].size();
 	}
 	if (sum == 0) {
 		return false;
@@ -173,9 +173,9 @@ bool Lottery::getNumber(size_t &win, std::vector<size_t> &groupList) {
 	// 境界値作成
 	for (size_t g : groupList) {
 		if (threshold.size() == 0)
-			threshold.push_back(name[g-1].size()*magnif[g-1]);
+			threshold.push_back(number[g-1].size()*magnif[g-1]);
 		else
-			threshold.push_back(threshold.back() + name[g-1].size()*magnif[g-1]);
+			threshold.push_back(threshold.back() + number[g-1].size()*magnif[g-1]);
 	}
 
 	// 乱数を発生させ，その乱数がどの領域にいるのか調べる
@@ -193,16 +193,16 @@ bool Lottery::getNumber(size_t &win, std::vector<size_t> &groupList) {
 
 
 	// グループが決まったら，くじを決める
-	size_t pos = mt()%name[selectGroup-1].size();
+	size_t pos = mt()%number[selectGroup-1].size();
 
-	win = name[selectGroup-1][pos];	// コピー
+	win = number[selectGroup-1][pos];	// コピー
 
 
 	// 当たったくじの削除処理
-	size_t tmp = name[selectGroup-1].back();
-	name[selectGroup-1].back() = name[selectGroup-1][pos];
-	name[selectGroup-1][pos] = tmp;
-	name[selectGroup-1].pop_back();
+	size_t tmp = number[selectGroup-1].back();
+	number[selectGroup-1].back() = number[selectGroup-1][pos];
+	number[selectGroup-1][pos] = tmp;
+	number[selectGroup-1].pop_back();
 
 
 
@@ -213,8 +213,8 @@ bool Lottery::getNumber(size_t &win, std::vector<size_t> &groupList) {
 
 void Lottery::clear() {
 
-	for (size_t i=0; i<name.size(); i++) {
-		name[i].clear();
+	for (size_t i=0; i<number.size(); i++) {
+		number[i].clear();
 	}
 
 	for (size_t i=0; i<magnif.size(); i++) {
